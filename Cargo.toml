@@ -1,0 +1,16 @@
+[package]
+name = "os-interface"
+version = "0.1.0"
+edition = "2024"
+keywords = ["libc", "operating", "system"]
+categories = ["os"]
+description = "Interface to retrieve OS information."
+authors = ["Christian Masus <cmasus@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cmasus/os-interface"
+readme = "README.md"
+
+[dependencies]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
