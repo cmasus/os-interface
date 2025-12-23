@@ -1,14 +1,21 @@
 # OS-Interface
 
+Crate holding easy to use functions for retrieving information from the
+operating system.
+
+PR contributions are welcome. Contributions could be in the form of
+improvements to existing functionality, adding support for other operating
+systems or adding new functionality.
+
 ## Goals
 
-* This crate aims to give an easy to use interface for retrieving data from the
+* This crate aims to give an easy-to-use interface for retrieving data from the
 OS, e.g. network information.
-* Another important goal of this crate is to have
-as few dependensies as possible. For example, in unix environments, this crate
-only depends on libc which in turn does not depend on anything else.
+* Expand with more functionality as long as it adheres to above point.
+* Have as few dependencies as possible. For example, in the Unix environments,
+this crate only depends on libc which in turn does not depend on anything else.
 * Encapsulate unsafe code.
-* Return information in a Rust-like manner.
+* Return data in a Rust-like manner.
 
 ## Usage
 
@@ -64,11 +71,12 @@ Network interfaces: [
 ]
 ```
 
-## Supported function per operating system
+## Supported functions per operating system
 
 function | linux | macos | windows | freebsd | android | ios
 --- | --- | --- | --- | --- | --- | ---
 get_network_interfaces() | yes | yes | no | yes | yes | yes
+get_hostname() | yes | yes | no | yes | yes | yes
 
 <!---
 ## API documentation

@@ -2,11 +2,12 @@
 name = "os-interface"
 version = "0.1.0"
 edition = "2024"
-keywords = ["libc", "operating", "system"]
+keywords = ["ip", "libc", "network", "operating", "system"]
 categories = ["os"]
 description = "Interface to retrieve OS information."
 authors = ["Christian Masus <cmasus@gmail.com>"]
 license = "MIT OR Apache-2.0"
+homepage = "https://github.com/cmasus/os-interface"
 repository = "https://github.com/cmasus/os-interface"
 readme = "README.md"
 

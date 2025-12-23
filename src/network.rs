@@ -1,11 +1,13 @@
+use libc::size_t;
 use libc::{
     AF_INET, AF_INET6, IFF_BROADCAST, IFF_LOOPBACK, IFF_MULTICAST, IFF_RUNNING, IFF_UP,
     freeifaddrs, getifaddrs, if_nametoindex, ifaddrs, sockaddr_in, sockaddr_in6,
 };
 use std::collections::BTreeMap;
-use std::ffi::CStr;
+use std::ffi::{CStr, OsString};
 use std::io::{Error, ErrorKind};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::os::unix::ffi::OsStringExt;
 use std::ptr;
 
 /// System network interface
@@ -148,7 +150,7 @@ fn get_mac_addr(ifa: &ifaddrs, family: i32) -> Option<String> {
 
         if sdl.sdl_alen == 6 {
             let mac = unsafe { std::slice::from_raw_parts(mac_ptr, 6) };
-            return Some(mac_to_string(&mac));
+            return Some(mac_to_string(mac));
         }
     }
 
@@ -250,18 +252,18 @@ pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
             AF_INET => {
                 let if_addr_v4 = get_if_addr_v4(ifa, &flags);
                 let addr = Addr::IPv4(if_addr_v4);
-                update_interfaces(index, name.to_string(), addr, flags, &mut interfaces);
+                update_interfaces(index, name.into_owned(), addr, flags, &mut interfaces);
             }
             AF_INET6 => {
                 let if_addr_v6 = get_if_addr_v6(ifa);
                 let addr = Addr::IPv6(if_addr_v6);
-                update_interfaces(index, name.to_string(), addr, flags, &mut interfaces);
+                update_interfaces(index, name.into_owned(), addr, flags, &mut interfaces);
             }
             family => {
                 let mac_addr = get_mac_addr(ifa, family);
                 update_interfaces_with_mac(
                     index,
-                    name.to_string(),
+                    name.into_owned(),
                     mac_addr,
                     flags,
                     &mut interfaces,
@@ -279,18 +281,41 @@ pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
     Ok(interfaces.into_values().collect())
 }
 
+/// Get the hostname.
+pub fn get_hostname() -> Result<OsString, Error> {
+    let mut buf: Vec<u8> = Vec::with_capacity(256);
+    let ptr = buf.as_mut_ptr().cast();
+    let len = buf.capacity() as size_t;
+
+    let res = unsafe { libc::gethostname(ptr, len) };
+    if res != 0 {
+        return Err(Error::new(ErrorKind::Other, "Failed to get hostname"));
+    }
+    unsafe {
+        buf.as_mut_ptr().wrapping_add(len - 1).write(0);
+        let len = CStr::from_ptr(buf.as_ptr().cast()).count_bytes();
+        buf.set_len(len);
+    }
+    Ok(OsString::from_vec(buf))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_get_network_interfaces() {
-        let interfaces = get_network_interfaces();
-        println!("interfaces: {interfaces:#?}");
-        assert!(interfaces.is_ok());
-        let interfaces = interfaces.expect("Should have interfaces");
+        let interfaces = get_network_interfaces().expect("Should give network interfaces");
+        println!("Interfaces: {interfaces:#?}");
         assert!(interfaces.len() > 0);
         assert!(interfaces[0].name.starts_with("lo"));
         assert!(interfaces[0].addr.len() > 0);
+    }
+
+    #[test]
+    fn test_get_hostname() {
+        let hostname = get_hostname().expect("Should give hostname");
+        println!("hostname: {hostname:#?}");
+        assert!(hostname.len() > 0);
     }
 }
