@@ -1,3 +1,4 @@
+use crate::Error;
 use libc::size_t;
 use libc::{
     AF_INET, AF_INET6, IFF_BROADCAST, IFF_LOOPBACK, IFF_MULTICAST, IFF_RUNNING, IFF_UP,
@@ -5,7 +6,6 @@ use libc::{
 };
 use std::collections::BTreeMap;
 use std::ffi::{CStr, OsString};
-use std::io::{Error, ErrorKind};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::unix::ffi::OsStringExt;
 use std::ptr;
@@ -69,7 +69,7 @@ pub struct IfAddrV6 {
     pub netmask: Option<Ipv6Addr>,
 }
 
-fn get_if_addr_v4(ifa: &ifaddrs, flags: &Flags) -> IfAddrV4 {
+fn if_addr_v4(ifa: &ifaddrs, flags: &Flags) -> IfAddrV4 {
     // Get Netmask
     let mut netmask: Option<Ipv4Addr> = None;
     if !ifa.ifa_netmask.is_null() {
@@ -105,7 +105,7 @@ fn get_if_addr_v4(ifa: &ifaddrs, flags: &Flags) -> IfAddrV4 {
     }
 }
 
-fn get_if_addr_v6(ifa: &ifaddrs) -> IfAddrV6 {
+fn if_addr_v6(ifa: &ifaddrs) -> IfAddrV6 {
     let mut netmask: Option<Ipv6Addr> = None;
     if !ifa.ifa_netmask.is_null() {
         let mask = unsafe { *(ifa.ifa_netmask as *const sockaddr_in6) };
@@ -127,7 +127,7 @@ fn mac_to_string(mac: &[u8]) -> String {
     mac_addr
 }
 
-fn get_mac_addr(ifa: &ifaddrs, family: i32) -> Option<String> {
+fn mac_addr(ifa: &ifaddrs, family: i32) -> Option<String> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     if family == libc::AF_PACKET {
         let sll = unsafe { *(ifa.ifa_addr as *const libc::sockaddr_ll) };
@@ -203,17 +203,23 @@ fn update_interfaces_with_mac(
         });
 }
 
-/// Get the network interfaces
+/// This function exist for backward compatibility.
+/// Use network_interfaces() instead.
 pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
+    network_interfaces()
+}
+
+/// Get all the network interfaces.
+pub fn network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
     let mut ifaddr_ptr: *mut ifaddrs = ptr::null_mut();
 
     unsafe {
         // Retrieve the linked list of interfaces
-        if getifaddrs(&mut ifaddr_ptr) != 0 {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Failed to get network interfaces",
-            ));
+        let res = getifaddrs(&mut ifaddr_ptr);
+        if res != 0 {
+            return Err(Error::FailedToGetResource(format!(
+                "getifaddrs returned {res}"
+            )));
         }
     }
 
@@ -250,17 +256,17 @@ pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
 
         match family {
             AF_INET => {
-                let if_addr_v4 = get_if_addr_v4(ifa, &flags);
+                let if_addr_v4 = if_addr_v4(ifa, &flags);
                 let addr = Addr::IPv4(if_addr_v4);
                 update_interfaces(index, name.into_owned(), addr, flags, &mut interfaces);
             }
             AF_INET6 => {
-                let if_addr_v6 = get_if_addr_v6(ifa);
+                let if_addr_v6 = if_addr_v6(ifa);
                 let addr = Addr::IPv6(if_addr_v6);
                 update_interfaces(index, name.into_owned(), addr, flags, &mut interfaces);
             }
             family => {
-                let mac_addr = get_mac_addr(ifa, family);
+                let mac_addr = mac_addr(ifa, family);
                 update_interfaces_with_mac(
                     index,
                     name.into_owned(),
@@ -281,15 +287,57 @@ pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
     Ok(interfaces.into_values().collect())
 }
 
-/// Get the hostname.
+/// Gets all local IPv4 addresses that are not loopback.
+pub fn local_ipv4_addresses() -> Result<Vec<Ipv4Addr>, Error> {
+    Ok(network_interfaces()?
+        .into_iter()
+        .filter_map(|ni| {
+            if !ni.flags.loopback {
+                ni.addr.into_iter().find_map(|addr| match addr {
+                    Addr::IPv4(addr) => Some(addr.ip),
+                    _ => None,
+                })
+            } else {
+                None
+            }
+        })
+        .collect())
+}
+
+/// Gets all local IPv6 addresses that are not loopback or unicast link local.
+pub fn local_ipv6_addresses() -> Result<Vec<Ipv6Addr>, Error> {
+    Ok(network_interfaces()?
+        .into_iter()
+        .filter_map(|ni| {
+            if !ni.flags.loopback {
+                ni.addr.into_iter().find_map(|addr| match addr {
+                    Addr::IPv6(addr) if !addr.ip.is_unicast_link_local() => Some(addr.ip),
+                    _ => None,
+                })
+            } else {
+                None
+            }
+        })
+        .collect())
+}
+
+/// This function exist for backward compatibility.
+/// Use hostname() instead.
 pub fn get_hostname() -> Result<OsString, Error> {
+    hostname()
+}
+
+/// Get the hostname.
+pub fn hostname() -> Result<OsString, Error> {
     let mut buf: Vec<u8> = Vec::with_capacity(256);
     let ptr = buf.as_mut_ptr().cast();
     let len = buf.capacity() as size_t;
 
     let res = unsafe { libc::gethostname(ptr, len) };
     if res != 0 {
-        return Err(Error::new(ErrorKind::Other, "Failed to get hostname"));
+        return Err(Error::FailedToGetResource(format!(
+            "gethostname returned {res}"
+        )));
     }
     unsafe {
         buf.as_mut_ptr().wrapping_add(len - 1).write(0);
@@ -304,8 +352,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_network_interfaces() {
-        let interfaces = get_network_interfaces().expect("Should give network interfaces");
+    fn test_network_interfaces() {
+        let interfaces = network_interfaces().expect("Failed to get network interfaces");
         println!("Interfaces: {interfaces:#?}");
         assert!(interfaces.len() > 0);
         assert!(interfaces[0].name.starts_with("lo"));
@@ -313,8 +361,20 @@ mod tests {
     }
 
     #[test]
-    fn test_get_hostname() {
-        let hostname = get_hostname().expect("Should give hostname");
+    fn test_local_ipv4_addresses() {
+        let addresses = local_ipv4_addresses().expect("Failed to get IPv4 addresses");
+        assert!(addresses.len() >= 1);
+    }
+
+    #[test]
+    fn test_local_ipv6_addresses() {
+        let addresses = local_ipv6_addresses();
+        assert!(addresses.is_ok());
+    }
+
+    #[test]
+    fn test_hostname() {
+        let hostname = hostname().expect("Failed to get hostname");
         println!("hostname: {hostname:#?}");
         assert!(hostname.len() > 0);
     }

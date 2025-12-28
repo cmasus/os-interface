@@ -4,8 +4,8 @@ Crate holding easy to use functions for retrieving information from the
 operating system.
 
 PR contributions are welcome. Contributions could be in the form of
-improvements to existing functionality, adding support for other operating
-systems or adding new functionality.
+improvements to existing functionality, adding new functionality or adding
+support for other operating systems.
 
 ## Goals
 
@@ -22,10 +22,10 @@ this crate only depends on libc which in turn does not depend on anything else.
 Example usage
 
 ```rust
-use os_interface::network::get_network_interfaces;
+use os_interface::network::network_interfaces;
 
 fn main() {
-    let network_interfaces = get_network_interfaces().unwrap();
+    let network_interfaces = network_interfaces().unwrap();
 
     println!("Network interfaces: {:#?}", network_interfaces);
 }
@@ -75,8 +75,10 @@ Network interfaces: [
 
 function | linux | macos | windows | freebsd | android | ios
 --- | --- | --- | --- | --- | --- | ---
-get_network_interfaces() | yes | yes | no | yes | yes | yes
-get_hostname() | yes | yes | no | yes | yes | yes
+network_interfaces() | yes | yes | no | yes | yes | yes
+local_ipv4_addresses() | yes | yes | no | yes | yes | yes
+local_ipv6_addresses() | yes | yes | no | yes | yes | yes
+hostname() | yes | yes | no | yes | yes | yes
 
 <!---
 ## API documentation
