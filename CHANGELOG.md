@@ -1,5 +1,12 @@
+<a name="v0.2.1"></a>
+## v0.2.1 (2025-12-30)
+
+#### Improvements
+
+* Changed Rust edition to 2021 and lowered the Rust version from 1.85.1 to 1.63.0.
+
 <a name="v0.2.0"></a>
-## v0.1.0 (2025-12-29)
+## v0.2.0 (2025-12-29)
 
 #### Features
 
