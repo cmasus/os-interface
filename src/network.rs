@@ -1,8 +1,8 @@
 use crate::Error;
 use libc::size_t;
 use libc::{
-    AF_INET, AF_INET6, IFF_BROADCAST, IFF_LOOPBACK, IFF_MULTICAST, IFF_RUNNING, IFF_UP,
-    freeifaddrs, getifaddrs, if_nametoindex, ifaddrs, sockaddr_in, sockaddr_in6,
+    freeifaddrs, getifaddrs, if_nametoindex, ifaddrs, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6,
+    IFF_BROADCAST, IFF_LOOPBACK, IFF_MULTICAST, IFF_RUNNING, IFF_UP,
 };
 use std::collections::BTreeMap;
 use std::ffi::{CStr, OsString};
@@ -67,6 +67,15 @@ pub struct IfAddrV6 {
     pub ip: Ipv6Addr,
     /// The netmask for this interface
     pub netmask: Option<Ipv6Addr>,
+}
+
+impl IfAddrV6 {
+    fn is_unicast_link_local(&self) -> bool {
+        // A unicast link-local address starts with the fe80::/10 prefix.
+        // This means the first 10 bits must be 1111 1110 10xx xxxx (0xfe80 to 0xfebf).
+        // In newer versions of Rust (1.84.1 and newer), simply use is_unicast_link_local() on Ipv6Addr.
+        (self.ip.segments()[0] & 0xffc0) == 0xfe80
+    }
 }
 
 fn if_addr_v4(ifa: &ifaddrs, flags: &Flags) -> IfAddrV4 {
@@ -248,9 +257,12 @@ pub fn network_interfaces() -> Result<Vec<NetworkInterface>, Error> {
         };
 
         // Process the address if it exists
-        let Some(ifa_addr) = (unsafe { ifa.ifa_addr.as_ref() }) else {
-            current_ptr = ifa.ifa_next;
-            continue;
+        let ifa_addr = match unsafe { ifa.ifa_addr.as_ref() } {
+            Some(ifa_addr) => ifa_addr,
+            None => {
+                current_ptr = ifa.ifa_next;
+                continue;
+            }
         };
         let family = ifa_addr.sa_family as i32;
 
@@ -311,7 +323,7 @@ pub fn local_ipv6_addresses() -> Result<Vec<Ipv6Addr>, Error> {
         .filter_map(|ni| {
             if !ni.flags.loopback {
                 ni.addr.into_iter().find_map(|addr| match addr {
-                    Addr::IPv6(addr) if !addr.ip.is_unicast_link_local() => Some(addr.ip),
+                    Addr::IPv6(addr) if !addr.is_unicast_link_local() => Some(addr.ip),
                     _ => None,
                 })
             } else {
@@ -341,7 +353,8 @@ pub fn hostname() -> Result<OsString, Error> {
     }
     unsafe {
         buf.as_mut_ptr().wrapping_add(len - 1).write(0);
-        let len = CStr::from_ptr(buf.as_ptr().cast()).count_bytes();
+        // In Rust 1.80.1 and newer replace count_bytes() with to_bytes().len()
+        let len = CStr::from_ptr(buf.as_ptr().cast()).to_bytes().len();
         buf.set_len(len);
     }
     Ok(OsString::from_vec(buf))
